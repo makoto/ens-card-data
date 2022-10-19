@@ -3,14 +3,12 @@ const moment = require('moment-timezone');
 const gr = require('graphql-request')
 const { request, gql } = gr
 const _ = require('lodash')
-const { providers } = require('ethers')
 const ethers = require('ethers').ethers
-console.log(2, process.env.INFURA_KEY)
+
 if(!process.env.INFURA_KEY){
     throw("Set INFURA_KEY")
 }
 const providerUrl = `https://mainnet.infura.io/v3/${process.env.INFURA_KEY}`
-console.log(3)
 const provider = new ethers.providers.JsonRpcProvider(providerUrl)
 
 let pagination = 1000
@@ -112,9 +110,6 @@ let dataFile
     totalTokens=totalTokens+data.tokens.length    
   } while (data.tokens.length === pagination);
 
-  console.log("fetched", data.tokens.length, totalTokens, lastToken)
-  console.log(Object.keys(collectorAddress).length + 'ppl claimed ' + totalTokens + '  ENS POAPs')
-  
   const leaderboard = Object.keys(collectorAddress).map(k => [k,collectorAddress[k]]).sort((a,b) => b[1].length - a[1].length)
   const mintorboard = Object.keys(mintorAddress).map(k => [k,mintorAddress[k]]).sort((a,b) => b[1].length - a[1].length)
   console.log('** leaderboard')
@@ -164,11 +159,9 @@ let dataFile
       }
     })
   })
-  console.log({race})
   var racechart = Object.keys(race).map(tp => {
     return [tp,...Object.values(race[tp])]
   })
-  racechart.unshift(['player', ...Object.keys(race['matoken.eth'])])
   console.log('*** issuer leaderboard')
   var issueredges = []
   var issuernodes = []
@@ -186,11 +179,12 @@ let dataFile
         issuernodes.push([a, c.length])    
     }
   }
-
-
   const attendedEventIdsArray = Array.from(attendedEventIds)
   const noMints = _.difference(eventIds, attendedEventIdsArray)
+  console.log(Object.keys(collectorAddress).length + 'ppl claimed ' + totalTokens + '  ENS POAPs')
   console.log(`${noMints.length} ppl did not issue any poaps`)
+  tokens.unshift(['tokenid', 'ownerId', 'eventId' , 'created'])
+  racechart.unshift(['player', ...Object.keys(race['matoken.eth'])])
   await fs.writeFile("./data/racechart.csv", racechart.map(n => n.join(',') ).join('\r\n') )
   await fs.writeFile("./data/tokens.csv", tokens.map(n => n.join(',') ).join('\r\n') )
   await fs.writeFile("./data/nodes.csv", nodes.map(n => n.join(',') ).join('\r\n') )
@@ -200,9 +194,3 @@ let dataFile
 }
 
 main()
-
-// address, ENS name, number of tokens collected
-
-
-// 1, [matoken.eth](https://app.poap.xyz/scan/matoken.eth), 30, 
-// 2, [0x134f...](https://app.poap.xyz/scan/0x134f...), 20, 

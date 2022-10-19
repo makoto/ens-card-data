@@ -1,6 +1,6 @@
 require "erb"
 require('csv')
-csv = CSV.open('./bquxjob_56be86f2_183e85a52e1.csv').readlines
+csv = CSV.open('./data/data.csv').readlines
 
 # Create template.
 template = %q{

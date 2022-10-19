@@ -3,6 +3,16 @@ const moment = require('moment');
 const gr = require('graphql-request')
 const { request, gql } = gr
 const _ = require('lodash')
+const { providers } = require('ethers')
+const ethers = require('ethers').ethers
+console.log(2, process.env.INFURA_KEY)
+if(!process.env.INFURA_KEY){
+    throw("Set INFURA_KEY")
+}
+const providerUrl = `https://mainnet.infura.io/v3/${process.env.INFURA_KEY}`
+console.log(3)
+const provider = new ethers.providers.JsonRpcProvider(providerUrl)
+
 let pagination = 1000
 const query = gql`
   query getTokens($eventIds: [String], $lastToken: Int){
@@ -49,6 +59,20 @@ async function main(){
 //   var eventIds = csv.map(c => c[1]).slice(1,30)
 eventIds = csv.map(c => c[1])
 const attendedEventIds = new Set()
+
+async function getUser(address, i){
+    // Only fetch username for the top 10
+    if(!addresses[address] && i < 25){
+       try{        
+        const name = await provider.lookupAddress(address)
+        addresses[address] = name         
+       }catch(e){
+        console.log(address, e)
+       }
+    }
+    return addresses[address] || address.slice(0,10)
+}
+
 let dataFile
   do {
     dataFile = `./data/poap_${lastToken}.json`
@@ -93,31 +117,40 @@ let dataFile
   const leaderboard = Object.keys(collectorAddress).map(k => [k,collectorAddress[k]]).sort((a,b) => b[1].length - a[1].length)
   const mintorboard = Object.keys(mintorAddress).map(k => [k,mintorAddress[k]]).sort((a,b) => b[1].length - a[1].length)
   console.log('** leaderboard')
-  var nodes = leaderboard.map(l => {
-    var user = addresses[l[0]] || l[0].slice(0,5)
-    return [user, l[1].length]
-  })
+  const nodes = []
   var edges = []
-  leaderboard.map((l, i) => {
+
+  for (let i = 0; i < leaderboard.length; i++) {
+    const l = leaderboard[i];
     var [a, c] = l
-    var user = addresses[a] || a.slice(0,10)
-    if(i < 11) console.log([i + 1, user, c.length].join('\t'))
-    c.map(cc => {
-        edges.push([user,cc.name, cc.created])
-    })
-  })
+    var user = await getUser(a, i)
+    
+    if(i < 25) console.log([i + 1, user, c.length].join('\t'))
+    if(c.length > 1){
+        nodes.push([user, c.length])
+        c.map(cc => {
+            edges.push([user,cc.name, cc.created])
+        })    
+    }
+  }
+
   console.log('*** issuer leaderboard')
   var issueredges = []
-  var issuernodes = mintorboard.map((l, i) => {
+  var issuernodes = []
+  for (let i = 0; i < mintorboard.length; i++) {
+    var l = mintorboard[i];
     var [a, c] = l
-    if(i < 11) console.log([i + 1, a, c.length].join('\t'))
-    c.map(cc => {
-        var issuer = addresses[a] || a.slice(0,10)
-        var collector = addresses[cc.name] || cc.name.slice(0,10)
-        issueredges.push([issuer,collector, cc.created])
-    })
-    return [a, c.length]
-  })
+    if(i < 25) console.log([i + 1, a, c.length].join('\t'))
+    if(c.length > 1){
+        for (let j = 0; j < c.length; j++) {
+            const cc = c[j];
+            var issuer = await getUser(a)
+            var collector = await getUser(cc.name)
+            issueredges.push([issuer,collector, cc.created])        
+        }
+        issuernodes.push([a, c.length])    
+    }
+  }
   const attendedEventIdsArray = Array.from(attendedEventIds)
   console.log(eventIds.length, attendedEventIdsArray.length)
   const noMints = _.difference(eventIds, attendedEventIdsArray)

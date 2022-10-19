@@ -17,7 +17,7 @@ ${
         label = (name.match(/\.eth/) && name.split(".").length == 2) ?  `'${name.split(".")[0]}'` : 'null'
         node = namehash.hash(name)
         if(poapId){
-            return `(${poapId}, '${createdAt}', '${address.toLowerCase()}','${name}', ${label}, '${node}', '${printedAt}')\n`
+            return `(${poapId}, '${createdAt}', '${address.toLowerCase().replace(/^0x/,"\\x")}','${name}', ${label}, '${node.replace(/^0x/,"\\x")}', '${printedAt}')\n`
         }else{
             return null
         }

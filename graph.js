@@ -1,5 +1,5 @@
 const fs = require('fs').promises;
-const moment = require('moment');
+const moment = require('moment-timezone');
 const gr = require('graphql-request')
 const { request, gql } = gr
 const _ = require('lodash')
@@ -31,6 +31,8 @@ const query = gql`
     }
   }
 `
+const threashold = 25
+
 const url = 'https://api.thegraph.com/subgraphs/name/poap-xyz/poap-xdai'
 console.log(process.env.INFURA_KEY)
 async function main(){
@@ -55,14 +57,12 @@ async function main(){
         events[poapId] = name
     }
   })
-//   console.log({addresses})
-//   var eventIds = csv.map(c => c[1]).slice(1,30)
 eventIds = csv.map(c => c[1])
 const attendedEventIds = new Set()
 
 async function getUser(address, i){
-    // Only fetch username for the top 10
-    if(!addresses[address] && i < 25){
+    // Only fetch username for the top x
+    if(!addresses[address] && i < threashold){
        try{        
         const name = await provider.lookupAddress(address)
         addresses[address] = name         
@@ -91,7 +91,7 @@ let dataFile
       tokens.push([id, owner.id, event.id, created])
       var collection = {
         name: events[event.id],
-        created: moment(new Date(parseInt(created) * 1000)).format("YYYY-MM-DD")
+        created: moment(new Date(parseInt(created) * 1000)).tz('America/Bogota').format("YYYY-MM-DD")
       }
       if(collectorAddress[owner.id]){
         collectorAddress[owner.id].push(collection)
@@ -100,7 +100,7 @@ let dataFile
       }
       var minting = {
         name: owner.id,
-        created: moment(new Date(parseInt(created) * 1000)).format("YYYY-MM-DD")
+        created: moment(new Date(parseInt(created) * 1000)).tz('America/Bogota').format("YYYY-MM-DD")
       }
       if(mintorAddress[mintor]){
         mintorAddress[mintor].push(minting)
@@ -110,7 +110,8 @@ let dataFile
       lastToken=parseInt(id)
     })
     totalTokens=totalTokens+data.tokens.length    
-} while (data.tokens.length === pagination);
+  } while (data.tokens.length === pagination);
+
   console.log("fetched", data.tokens.length, totalTokens, lastToken)
   console.log(Object.keys(collectorAddress).length + 'ppl claimed ' + totalTokens + '  ENS POAPs')
   
@@ -119,28 +120,62 @@ let dataFile
   console.log('** leaderboard')
   const nodes = []
   var edges = []
-
+  var timeseries = {}
+  var topplayers = {}
+  var totals = {}
+  var race = {}
   for (let i = 0; i < leaderboard.length; i++) {
     const l = leaderboard[i];
     var [a, c] = l
     var user = await getUser(a, i)
     
-    if(i < 25) console.log([i + 1, user, c.length].join('\t'))
+    if(i < threashold) {
+        console.log([i + 1, user, c.length].join('\t'))
+        topplayers[user] = true
+    }
     if(c.length > 1){
         nodes.push([user, c.length])
         c.map(cc => {
             edges.push([user,cc.name, cc.created])
+            if(i < threashold) {
+              if(timeseries[cc.created]){
+                if(timeseries[cc.created][user]){
+                  timeseries[cc.created][user]+=1
+                }else{
+                  timeseries[cc.created][user]=1
+                }
+              }else{
+                timeseries[cc.created] = {
+                  [user]:1
+                }
+              }
+            }
         })    
     }
-  }
-
+  }  
+  Object.keys(topplayers).map(tp => {
+    if(!totals[tp]) totals[tp]=0
+    Object.keys(timeseries).map(ts => {
+      totals[tp] = totals[tp] + (timeseries[ts][tp] || 0)
+      if(race[tp]){
+        race[tp][ts] = totals[tp]
+      }else{
+        race[tp] = {[ts]: totals[tp]}
+      }
+    })
+  })
+  console.log({race})
+  var racechart = Object.keys(race).map(tp => {
+    return [tp,...Object.values(race[tp])]
+  })
+  racechart.unshift(['player', ...Object.keys(race['matoken.eth'])])
   console.log('*** issuer leaderboard')
   var issueredges = []
   var issuernodes = []
   for (let i = 0; i < mintorboard.length; i++) {
     var l = mintorboard[i];
     var [a, c] = l
-    if(i < 25) console.log([i + 1, a, c.length].join('\t'))
+    if(i < threashold) console.log([i + 1, a, c.length].join('\t'))
     if(c.length > 1){
         for (let j = 0; j < c.length; j++) {
             const cc = c[j];
@@ -151,10 +186,12 @@ let dataFile
         issuernodes.push([a, c.length])    
     }
   }
+
+
   const attendedEventIdsArray = Array.from(attendedEventIds)
-  console.log(eventIds.length, attendedEventIdsArray.length)
   const noMints = _.difference(eventIds, attendedEventIdsArray)
-  console.log(noMints.length, noMints)
+  console.log(`${noMints.length} ppl did not issue any poaps`)
+  await fs.writeFile("./data/racechart.csv", racechart.map(n => n.join(',') ).join('\r\n') )
   await fs.writeFile("./data/tokens.csv", tokens.map(n => n.join(',') ).join('\r\n') )
   await fs.writeFile("./data/nodes.csv", nodes.map(n => n.join(',') ).join('\r\n') )
   await fs.writeFile("./data/edges.csv", edges.map(e => e.join(',') ).join('\r\n') )
